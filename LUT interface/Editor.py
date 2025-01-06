@@ -140,6 +140,10 @@ def Init(File):
     
     TextBox = ScrolledText(root, font="MonoLisa 12", wrap="none")
     if __name__ == "__main__": TextBox.insert("0.1", "print('Hello, world!')")
+    else:
+        if File != None:
+            with open(file=File, mode="r", encoding="utf-8") as File:
+                TextBox.insert("0.1", File.read())
     TextBox.pack(fill=BOTH, side=BOTTOM, expand=True, padx=[3, 3], pady=[3, 3])
     
     # Create buttons instead of menu

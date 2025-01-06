@@ -13,7 +13,7 @@ def MainRoot():
     ExplorerButton = Button(MainFrame, text="Explorer", command=Explorer.Init)
     ExplorerButton.pack()
     
-    EditorButton = Button(MainFrame, text="File Editor", command=Editor.Init)
+    EditorButton = Button(MainFrame, text="File Editor", command=lambda:Editor.Init(None))
     EditorButton.pack()
     
     root.protocol("WM_DELETE_WINDOW", lambda:on_closing(root))

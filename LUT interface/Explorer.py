@@ -95,7 +95,7 @@ def RenameFile():
     if rename_frame:
         new_name = rename_frame.get()
         if not new_name or new_name == "": return
-        os.rename(selected_file, new_name)
+        os.rename(selected_file, os.path.dirname(selected_file)+"/"+new_name)
         rename_frame.destroy()
         rename_frame = None
         SelectClear()

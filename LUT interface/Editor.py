@@ -5,12 +5,16 @@ from tkinter.filedialog import *
 from tkinter.messagebox import *
 import os
 import threading
+import queue
 
 # Global Variables
 SelectedFile = None
 root = None
 AboutRoot = None
 RootName = os.path.basename(__file__)
+execution_thread = None
+stop_event = threading.Event()
+output_queue = queue.Queue()
 
 # File Menu Functions
 def File_Menu_New(TextBox):
@@ -20,14 +24,15 @@ def File_Menu_New(TextBox):
     root.title(RootName)
 
 def File_Menu_Save(TextBox):
+    global SelectedFile
+    if SelectedFile is None:
+        return File_Menu_SaveAs(TextBox)  # Если файла нет, вызываем Save As
     try:
-        global SelectedFile
         with open(SelectedFile, "w+", encoding="utf-8") as File:
             File.write(TextBox.get("1.0", END))
             root.title(RootName + f' "{os.path.basename(SelectedFile)}"')
-            return File
-    except:
-        showerror("Error", "Файл не найден.")
+    except Exception as e:
+        showerror("Error", f"Ошибка сохранения файла: {e}")
 
 def File_Menu_SaveAs(TextBox):
     global SelectedFile
@@ -36,50 +41,64 @@ def File_Menu_SaveAs(TextBox):
                                      confirmoverwrite=True,
                                      defaultextension="txt",
                                      initialfile="PythonFile.py")
-        
-        with open(GetFile, "w+", encoding="utf-8") as File:
-            File.write(TextBox.get("1.0", END))
-            SelectedFile = File.name
-        root.title(RootName + f' "{os.path.basename(SelectedFile)}"')
-        return GetFile
-    except:
-        pass
+        if GetFile:  # Проверяем, что файл был выбран
+            with open(GetFile, "w+", encoding="utf-8") as File:
+                File.write(TextBox.get("1.0", END))
+                SelectedFile = GetFile
+            root.title(RootName + f' "{os.path.basename(SelectedFile)}"')
+    except Exception as e:
+        showerror("Error", f"Ошибка сохранения файла: {e}")
 
 def File_Menu_Open(TextBox):
     global SelectedFile
     try:
         OpenFile = askopenfilename()
-        TextBox.delete("1.0", END)
-        with open(OpenFile, "r", encoding="utf-8") as File:
-            TextBox.insert("0.1", File.read())
-        SelectedFile = OpenFile
-        root.title(RootName + f' "{os.path.basename(SelectedFile)}"')
-    except:
-        pass
+        if OpenFile:  # Проверяем, что файл был выбран
+            TextBox.delete("1.0", END)
+            with open(OpenFile, "r", encoding="utf-8") as File:
+                TextBox.insert("0.1", File.read())
+            SelectedFile = OpenFile
+            root.title(RootName + f' "{os.path.basename(SelectedFile)}"')  # Обновляем заголовок
+    except Exception as e:
+        showerror("Error", f"Ошибка открытия файла: {e}")
+
+def execute_code(code):
+    global stop_event
+    stop_event.clear()  # Сбрасываем флаг остановки
+    try:
+        # Оборачиваем exec в функцию, чтобы использовать stop_event
+        exec_code = code
+        exec(exec_code)
+    except Exception as e:
+        output_queue.put(f"Ошибка выполнения кода: {e}")
 
 def File_Init(TextBox, run_button):
+    global execution_thread
     if len(TextBox.get("0.1", END)) == 0 or TextBox.get("0.1", END).isspace():
         return
 
-    global SelectedFile
-    if SelectedFile is None or not os.path.exists(SelectedFile):
-        result = askyesno(title="Подтверждение операции", message="Для запуска кода требуется сохранить код. Сохранить код?")
-        if result: 
-            File = File_Menu_SaveAs(TextBox)
-            SelectedFile = File
-        else: 
-            return
-    else: 
-        File = SelectedFile
-
+    code = TextBox.get("1.0", END)
     run_button.config(state=DISABLED)  # Disable the button before execution
-    try:
-        with open(file=File, mode="r", encoding="utf-8") as File:
-            exec(File.read() + '\ninput("Press Enter to exit...")\n')
-    except Exception as e:
-        showerror("Error", f"Произошла ошибка: {e}")
-    finally:
+
+    # Запуск кода в отдельном потоке
+    execution_thread = threading.Thread(target=execute_code, args=(code,))
+    execution_thread.start()
+
+    # Запуск потока для обновления вывода
+    root.after(100, check_output)
+
+def check_output():
+    while not output_queue.empty():
+        output = output_queue.get()
+        print(output)  # Выводим в консоль, можно добавить в текстовое поле
+    if execution_thread.is_alive():
+        root.after(100, check_output)  # Проверяем вывод каждые 100 мс
+    else:
         run_button.config(state=NORMAL)  # Re-enable the button after execution
+
+def stop_code():
+    global stop_event
+    stop_event.set()  # Устанавливаем флаг остановки
 
 # About Function
 def About_Func():
@@ -89,14 +108,14 @@ def About_Func():
 
 # Main Function
 def Init(File):
-    global SelectedFile, root, AboutRoot
-    if __name__ == "__main__":
-        root = tk.Tk()
-    else: root = Toplevel()
-    if File:
+    global SelectedFile, root, AboutRoot, run_button
+    if __name__ == "__main__":root = tk.Tk()
+    else:root = tk.Toplevel()
+    print(File)
+    if File != None:
         SelectedFile = File
-        root.title(RootName + f' "{os.path.basename(SelectedFile)}"')
-    root.title(RootName)
+        root.title(RootName + f' "{os.path.basename(File)}"')
+    else:root.title(RootName)
     root.geometry("820x500")
     root.option_add("*tearOff", False)
     
@@ -118,35 +137,36 @@ def Init(File):
     InfoText.pack(anchor=NW)
 
     AboutRoot.withdraw()
-    # Icon Setup
-    try:
-        root.iconbitmap(default=".\_internal\LUT_Editor.ico")
-        AboutRoot.iconbitmap(default=".\_internal\LUT_Editor.ico")
-    except:
-        print("Icons not found")
     
     TextBox = ScrolledText(root, font="MonoLisa 12", wrap="none")
-    if __name__ == "__main__":TextBox.insert("0.1", "print('Hello, world!')")
-    else: TextBox.insert("0.1", open(SelectedFile,"r",encoding="utf-8").read())
-    TextBox.pack(fill=BOTH, side=LEFT, expand=True, padx=[3, 3], pady=[3, 3])
+    if __name__ == "__main__": TextBox.insert("0.1", "print('Hello, world!')")
+    TextBox.pack(fill=BOTH, side=BOTTOM, expand=True, padx=[3, 3], pady=[3, 3])
     
-    # File Menu
-    File_Menu = tk.Menu()
-    File_Menu.add_cascade(label="New", command=lambda: File_Menu_New(TextBox))
-    File_Menu.add_cascade(label="Save", command=lambda: File_Menu_Save(TextBox))
-    File_Menu.add_cascade(label="Save as", command=lambda: File_Menu_SaveAs(TextBox))
-    File_Menu.add_cascade(label="Open", command=lambda: File_Menu_Open(TextBox))
-    
-    # Main Menu
-    Main_Menu = tk.Menu()
-    Main_Menu.add_cascade(label="File", menu=File_Menu)
-    Main_Menu.add_cascade(label="About", command=lambda: About_Func())
-    
-    run_button = tk.Button(root, text="Run code", command=lambda: threading.Thread(target=File_Init, args=(TextBox, run_button)).start())
-    run_button.pack(side=BOTTOM, padx=[3, 3], pady=[3, 3])
-    
-    root.config(menu=Main_Menu)
-    
+    # Create buttons instead of menu
+    button_frame = Frame(root)
+    button_frame.pack(side=LEFT, fill=X)
+
+    new_button = Button(button_frame, text="New", command=lambda: File_Menu_New(TextBox))
+    new_button.pack(side=LEFT, padx=2, pady=5)
+
+    save_button = Button(button_frame, text="Save", command=lambda: File_Menu_Save(TextBox))
+    save_button.pack(side=LEFT, padx=2, pady=5)
+
+    save_as_button = Button(button_frame, text="Save As", command=lambda: File_Menu_SaveAs(TextBox))
+    save_as_button.pack(side=LEFT, padx=2, pady=5)
+
+    open_button = Button(button_frame, text="Open", command=lambda: File_Menu_Open(TextBox))
+    open_button.pack(side=LEFT, padx=2, pady=5)
+
+    about_button = Button(button_frame, text="About", command=lambda: About_Func())
+    about_button.pack(side=LEFT, padx=2, pady=5)
+
+    run_button = tk.Button(root, text="Run code", command=lambda: File_Init(TextBox, run_button))
+    run_button.pack(side=RIGHT, padx=[3, 3], pady=[3, 3])
+
+    stop_button = tk.Button(root, text="Stop code", command=stop_code)
+    stop_button.pack(side=RIGHT, padx=[3, 3], pady=[3, 3])
+
     root.mainloop()
 
 # GUI Initialization

@@ -1,4 +1,4 @@
-# LUT Explorer 2025, version - 0.0.0-alpha by @offjjo
+# LUT Explorer 2025, version - 0.0.1-alpha by @offjjo
 
 from tkinter import *; from tkinter import messagebox; from pathlib import Path; import os; import shutil; import Editor
 

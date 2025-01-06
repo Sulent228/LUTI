@@ -119,7 +119,7 @@ def CreateFile():
         print("File created")
         LoadFilesInExplorer(explorer_frame)
     elif result == False:
-        os.makedirs("NewFolder")
+        os.makedirs(str(currentDirectory)+"/NewFolder")
         print("Folder created")
         LoadFilesInExplorer(explorer_frame)
     else: pass
